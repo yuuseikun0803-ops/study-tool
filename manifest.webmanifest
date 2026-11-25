@@ -1,0 +1,10 @@
+{
+  "name": "修了考査 復習管理",
+  "short_name": "修了考査",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4f5f7",
+  "theme_color": "#f4f5f7",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}
