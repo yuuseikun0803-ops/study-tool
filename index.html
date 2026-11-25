@@ -78,6 +78,8 @@ nav.tabs button[aria-selected=true]{color:var(--acc);font-weight:600}
 .stars button.on{color:#e6a700}
 .log{font-size:12px}
 .more{display:block;width:100%;padding:12px;margin-top:8px;border-radius:12px;background:#fff;border:1px solid var(--line);color:var(--acc);font-weight:600}
+.grp{font-size:12px;font-weight:700;color:var(--mute);margin:10px 4px 0;padding-top:4px}
+.grp:first-child{margin-top:0}
 .empty{text-align:center;color:var(--mute);padding:28px 8px}
 
 .row{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
@@ -128,6 +130,7 @@ nav.tabs button[aria-selected=true]{color:var(--acc);font-weight:600}
     <div class="chips" id="fType"></div>
     <div class="chips" id="fSubj"></div>
     <div class="chips" id="fTier"></div>
+    <div class="chips" id="fSort"></div>
     <input class="search" id="q" type="search" placeholder="論点・節名・出典で検索">
     <div class="note" id="listCount"></div>
     <div class="list" id="list"></div>
@@ -334,14 +337,30 @@ function renderToday(){
   pick.forEach(it=>list.append(card(it,refresh)));
 }
 
+/* ---------- 並び順 ---------- */
+let ORD=null;   // id -> 教材データ内の位置
+function bookKey(i){
+  if(!ORD){ ORD=new Map(); (DATA?DATA.items:[]).forEach((x,k)=>ORD.set(x.id,k)); }
+  const s=i.source||'';
+  const kind = i.type==='section' ? (s.includes('修了考査対策編')?1:0)
+             : s.startsWith('過去問') ? 4 : s.includes('問題集') ? 3 : 2;
+  const sj=SUBJECTS.indexOf(i.subject);
+  return [sj<0?99:sj, kind, ORD.has(i.id)?ORD.get(i.id):1e6];
+}
+function byBook(a,b){ const x=bookKey(a), y=bookKey(b); for(let k=0;k<x.length;k++) if(x[k]!==y[k]) return x[k]-y[k]; return 0; }
+function byRecent(a,b){ return lastDate(b).localeCompare(lastDate(a)) || byPriority(a,b); }
+const groupOf = i => i.type==='section' ? `${i.subject} ・ ${(i.source||'').replace(i.subject,'').replace(/^[\s-]+/,'')}${i.chapter?' ・ '+i.chapter:''}` : `${i.subject} ・ ${(i.source||'').replace(i.subject,'').trim()}`;
+
 /* ---------- 一覧 ---------- */
-const F={type:'',subj:'',tier:'',q:'',limit:40};
+const F={type:'',subj:'',tier:'',q:'',limit:40,sort:CONF.sort||'prio'};
 const isPast = i => (i.source||'').startsWith('過去問');
 function renderList(){
   const reset=()=>{F.limit=40;renderList();};
   chips($('#fType'),[['','すべて'],['section','テキスト'],['drill','答練・問題集'],['past','過去問']],F.type,v=>{F.type=v;reset();});
   chips($('#fSubj'),[['','全科目'],...SUBJECTS.map(s=>[s,s])],F.subj,v=>{F.subj=v;reset();});
   chips($('#fTier'),[['','全優先度'],['hi','高'],['mid','中'],['lo','低'],['todo','未着手'],['done','完了']],F.tier,v=>{F.tier=v;reset();});
+  chips($('#fSort'),[['prio','優先度順'],['book','教材順'],['recent','最近記録した順']],F.sort,v=>{F.sort=v;CONF.sort=v;ls.set(K_CONF,CONF);reset();});
+  $('#fSort').prepend(h('span',{style:'flex:none;align-self:center;font-size:12px;color:var(--mute);padding:0 2px'},'並び'));
   const q=F.q.trim().toLowerCase();
   const arr=items().filter(i=>{
     if(F.type==='section'&&i.type!=='section') return false;
@@ -352,11 +371,15 @@ function renderList(){
     else if(F.tier&&tier(i)!==F.tier) return false;
     if(q&&!(i.title+' '+(i.source||'')+' '+(i.chapter||'')+' '+(i.no||'')+' '+(i.topics||[]).join(' ')).toLowerCase().includes(q)) return false;
     return true;
-  }).sort(byPriority);
-  $('#listCount').textContent=`${arr.length}件（優先度順）`;
+  }).sort(F.sort==='book'?byBook:F.sort==='recent'?byRecent:byPriority);
+  $('#listCount').textContent=`${arr.length}件（${{prio:'優先度順',book:'教材順',recent:'最近記録した順'}[F.sort]}）`;
   const list=$('#list'); list.replaceChildren();
   if(!arr.length) list.append(h('div',{class:'empty'},items().length?'該当なし':'設定タブから教材データを読み込んでください'));
-  arr.slice(0,F.limit).forEach(it=>list.append(card(it,refresh)));
+  let lastG=null;
+  arr.slice(0,F.limit).forEach(it=>{
+    if(F.sort==='book'){ const g=groupOf(it); if(g!==lastG){ list.append(h('div',{class:'grp'},g)); lastG=g; } }
+    list.append(card(it,refresh));
+  });
   $('#more').hidden=arr.length<=F.limit;
 }
 $('#more').onclick=()=>{F.limit+=40;renderList();};
@@ -400,7 +423,7 @@ $('#fileData').onchange=async e=>{
     if(d.format!=='study-data-v1'||!Array.isArray(d.items)) throw new Error('study-data.json ではありません');
     const next={built:d.built,items:d.items};
     if(!ls.set(K_DATA,next)) return;
-    DATA=next;
+    DATA=next; ORD=null;
     adoptAliases(d.items);
     toast(`${d.items.length}項目を読込（進捗${d.items.filter(i=>PROG[i.id]).length}件を引き継ぎ）`); refresh();
   }catch(err){ toast('読込失敗: '+err.message); }
