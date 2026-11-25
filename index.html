@@ -197,6 +197,19 @@ const items = () => (DATA?DATA.items:[]).concat(custom());
   ls.set(K_PROG,PROG); ls.set(K_CONF,CONF); localStorage.setItem('sk-migrated','1');
 })();
 
+// 教材データ更新でIDが変わった項目は、alias(旧ID)の進捗を新IDへ移す
+function adoptAliases(list){
+  let n=0;
+  for(const it of list){
+    if(!it.alias) continue;
+    for(const a of it.alias){
+      if(PROG[a] && !PROG[it.id]){ PROG[it.id]=PROG[a]; delete PROG[a]; n++; }
+    }
+  }
+  if(n) ls.set(K_PROG,PROG);
+  return n;
+}
+
 /* ---------- 計算 ---------- */
 const ymd = d => d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 const today = () => ymd(new Date());
@@ -388,6 +401,7 @@ $('#fileData').onchange=async e=>{
     const next={built:d.built,items:d.items};
     if(!ls.set(K_DATA,next)) return;
     DATA=next;
+    adoptAliases(d.items);
     toast(`${d.items.length}項目を読込（進捗${d.items.filter(i=>PROG[i.id]).length}件を引き継ぎ）`); refresh();
   }catch(err){ toast('読込失敗: '+err.message); }
 };
